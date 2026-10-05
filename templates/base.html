@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f5f8ff"><title>{% block title %}MediFind · Find medicine nearby{% endblock %}</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="site-header"><div class="nav">
+  <a class="brand" href="/" aria-label="MediFind home"><span class="brand-mark">+</span>Medi<span class="brand-accent">Find</span></a>
+  <nav class="nav-links"><a href="/">Find medicine</a>{% if current_user and current_user.role == 'shopkeeper' %}<a href="/shop">My pharmacy</a>{% endif %}{% if current_user and current_user.role == 'admin' %}<a href="/admin">Admin</a>{% endif %}</nav>
+  <div class="nav-actions"><button type="button" class="location-button" onclick="useLocation(this)"><span class="location-dot"></span>Use my location</button><span id="location-status" class="location-status" aria-live="polite"></span>
+  {% if current_user %}<span class="nav-user">{{current_user.name}}</span><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button class="text-button">Log out</button></form>{% else %}<a class="nav-login" href="/login">Log in</a><a class="button nav-join" href="/register">Join free</a>{% endif %}</div>
+</div></header>
+<main class="page-shell">
+{% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="flash {{category}}">{{message}}</div>{% endfor %}{% endwith %}
+{% block content %}{% endblock %}
+</main>
+<footer class="site-footer"><span class="brand"><span class="brand-mark">+</span>Medi<span class="brand-accent">Find</span></span><span>Local medicine availability, made easier.</span><a href="#about">About</a></footer>
+<script>
+function applySavedLocation() {
+  const saved = localStorage.getItem('medifind-location');
+  if (!saved) return;
+  try {
+    const coords = JSON.parse(saved);
+    document.querySelectorAll('form.search').forEach(form => {
+      const lat = form.querySelector('[name="lat"]'), lon = form.querySelector('[name="lon"]');
+      if (lat && lon) { lat.value = coords.lat; lon.value = coords.lon; }
+    });
+    const status = document.getElementById('location-status');
+    if (status) status.textContent = 'Location saved';
+  } catch (_) { localStorage.removeItem('medifind-location'); }
+}
+function useLocation(button) {
+  const status = document.getElementById('location-status');
+  if (!navigator.geolocation) { if(status) status.textContent = 'Location is unavailable'; return; }
+  button.disabled = true;
+  if(status) status.textContent = 'Finding you…';
+  navigator.geolocation.getCurrentPosition(position => {
+    const coords = {lat: position.coords.latitude, lon: position.coords.longitude};
+    localStorage.setItem('medifind-location', JSON.stringify(coords));
+    applySavedLocation(); button.disabled = false;
+    if(status) status.textContent = 'Location ready';
+  }, () => { button.disabled = false; if(status) status.textContent = 'Could not get location'; }, {timeout: 10000, maximumAge: 300000});
+}
+document.addEventListener('DOMContentLoaded', applySavedLocation);
+</script>
+</body></html>
