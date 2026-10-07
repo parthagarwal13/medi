@@ -243,7 +243,14 @@ def inject_globals():
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    featured_listings = (
+        Inventory.query.join(Medicine).join(Pharmacy)
+        .filter(Pharmacy.verified.is_(True), Inventory.stock > 0)
+        .order_by(Medicine.name, Inventory.price)
+        .limit(8)
+        .all()
+    )
+    return render_template("index.html", featured_listings=featured_listings)
 
 
 @app.route("/style.css")
@@ -336,19 +343,26 @@ def register():
 
 
 @app.route("/login", methods=["GET", "POST"])
-def login():
+@app.route("/login/<portal>", methods=["GET", "POST"])
+def login(portal="customer"):
+    portal_roles = {"customer": "customer", "shopkeeper": "shopkeeper", "admin": "admin"}
+    if portal not in portal_roles:
+        abort(404)
+    expected_role = portal_roles[portal]
     if request.method == "POST":
         account = Account.query.filter_by(email=request.form.get("email", "").strip().lower()).first()
         if not account or not check_password_hash(account.password_hash, request.form.get("password", "")):
             flash("Email or password is incorrect.", "error")
         elif not account.active:
             flash("This account is disabled. Contact the administrator.", "error")
+        elif account.role != expected_role:
+            flash(f"This account is for the {account.role} portal. Sign in with an account for the {portal} portal.", "error")
         else:
             session.clear()
             session["account_id"] = account.id
             flash("Welcome back.")
             return redirect(url_for("admin" if account.role == "admin" else "shop" if account.role == "shopkeeper" else "home"))
-    return render_template("login.html")
+    return render_template("login.html", portal=portal)
 
 
 @app.post("/logout")
@@ -360,9 +374,15 @@ def logout():
 
 @app.route("/shop")
 def shop():
-    account = require_role("shopkeeper")
-    if not account:
-        return redirect(url_for("login"))
+    account = current_account()
+    if not account or not account.active:
+        session.clear()
+        flash("Please log in to continue.", "error")
+        return redirect(url_for("login", portal="shopkeeper"))
+    if account.role != "shopkeeper":
+        session.clear()
+        flash("Please sign in with a shopkeeper account.", "error")
+        return redirect(url_for("login", portal="shopkeeper"))
     if not account.pharmacy:
         abort(403)
     inventory = Inventory.query.filter_by(pharmacy_id=account.pharmacy.id).all()
@@ -523,9 +543,15 @@ def delete_shop_inventory(inventory_id):
 
 @app.route("/admin")
 def admin():
-    account = require_role("admin")
-    if not account:
-        return redirect(url_for("login"))
+    account = current_account()
+    if not account or not account.active:
+        session.clear()
+        flash("Please log in to continue.", "error")
+        return redirect(url_for("login", portal="admin"))
+    if account.role != "admin":
+        session.clear()
+        flash("Please sign in with an administrator account.", "error")
+        return redirect(url_for("login", portal="admin"))
     accounts = Account.query.order_by(Account.created_at.desc()).all()
     shops = Pharmacy.query.order_by(Pharmacy.created_at.desc()).all()
     return render_template("admin.html", accounts=accounts, shops=shops, medicines=Medicine.query.order_by(Medicine.name).all())

@@ -1,13 +1,47 @@
-{% extends "base.html" %}{% block content %}
-<section class="hero-shell">
-  <div class="hero-copy"><div class="hero-kicker"><span class="kicker-dot"></span> YOUR NEIGHBORHOOD MEDICINE FINDER</div>
-    <h1>Medicine nearby.<br><span>Peace of mind, closer.</span></h1>
-    <p class="hero-lede">Check availability at verified pharmacies, compare prices, and find the closest shop before you step out.</p>
-    <form class="search search-large" action="/search"><span class="search-icon">⌕</span><input name="q" placeholder="Search a medicine or salt…" aria-label="Medicine name or salt" autofocus><input type="hidden" name="lat"><input type="hidden" name="lon"><button type="submit">Find medicine <span>→</span></button></form>
-    <div class="hero-note"><span>✓</span> No ordering, no guesswork. Call the pharmacy to confirm stock.</div>
+{% extends "base.html" %}{% block title %}Find nearby medicine | MediFind{% endblock %}{% block content %}
+<section class="hero-shell home-hero">
+  <div class="hero-copy">
+    <div class="hero-kicker"><span class="kicker-dot"></span> YOUR NEIGHBORHOOD MEDICINE FINDER</div>
+    <div class="hero-carousel" aria-label="MediFind highlights" aria-live="polite">
+      <article class="hero-slide is-active"><h1>Medicine nearby.<br><span>Peace of mind, closer.</span></h1><p class="hero-lede">Check availability at verified pharmacies, compare prices, and find the closest shop before you step out.</p></article>
+      <article class="hero-slide"><h1>Know what is <span>in stock.</span></h1><p class="hero-lede">Browse live listings from local pharmacies and call ahead to confirm availability.</p></article>
+      <article class="hero-slide"><h1>Care starts <span>close to home.</span></h1><p class="hero-lede">Find nearby shops, compare listed prices, and make a more confident visit.</p></article>
+    </div>
+    <form class="search search-large" action="/search"><span class="search-icon" aria-hidden="true">&#9906;</span><input name="q" placeholder="Search a medicine or salt..." aria-label="Medicine name or salt"><input type="hidden" name="lat"><input type="hidden" name="lon"><button type="submit">Find medicine <span aria-hidden="true">&#8594;</span></button></form>
+    <div class="hero-note"><span>&#10003;</span> No ordering, no guesswork. Call the pharmacy to confirm stock.</div>
+    <div class="slide-controls" role="group" aria-label="Choose a highlight"><button type="button" class="slide-dot is-active" aria-label="Show slide 1" aria-pressed="true"></button><button type="button" class="slide-dot" aria-label="Show slide 2" aria-pressed="false"></button><button type="button" class="slide-dot" aria-label="Show slide 3" aria-pressed="false"></button><span class="slide-caption">Local stock, made easier</span></div>
   </div>
-  <div class="hero-visual"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="visual-glow"></div><div class="medicine-bottle"><div class="bottle-cap"></div><div class="bottle-neck"></div><div class="bottle-body"><div class="bottle-cross">+</div><strong>CARE<br>NEAR YOU</strong><small>MEDIFIND</small></div></div><div class="floating-card availability"><span class="mini-check">✓</span><div><b>Verified nearby</b><small>Pharmacies you can trust</small></div></div><div class="floating-card price-tag"><span class="price-symbol">₹</span><div><b>Compare prices</b><small>Find a better local rate</small></div></div><div class="visual-caption">Good care starts close to home.</div></div>
+  <div class="hero-visual"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="visual-glow"></div><div class="medicine-bottle"><div class="bottle-cap"></div><div class="bottle-neck"></div><div class="bottle-body"><div class="bottle-cross">+</div><strong>CARE<br>NEAR YOU</strong><small>MEDIFIND</small></div></div><div class="floating-card availability"><span class="mini-check">&#10003;</span><div><b>Verified nearby</b><small>Pharmacies you can trust</small></div></div><div class="floating-card price-tag"><span class="price-symbol">&#8377;</span><div><b>Compare prices</b><small>Find a better local rate</small></div></div><div class="visual-caption">Good care starts close to home.</div></div>
 </section>
-<section class="trust-strip"><div><strong>Search by name or salt</strong><span>Find the medicine you need</span></div><i></i><div><strong>Compare local pharmacies</strong><span>Distance, stock and price</span></div><i></i><div><strong>See similar salts</strong><span>Availability information</span></div></section>
-<section class="about-section" id="about"><div class="about-heading"><div><p class="eyebrow">ABOUT MEDIFIND</p><h2>A simpler way to find local medicine.</h2></div><p>MediFind connects people looking for medicine with nearby pharmacies that list their current stock and prices.</p></div><div class="about-grid"><article><span class="about-number">01</span><h3>For customers</h3><p>Search medicines, compare nearby availability, and contact the pharmacy directly.</p></article><article><span class="about-number">02</span><h3>For pharmacies</h3><p>Shopkeepers can list their pharmacy and keep medicine stock and prices up to date.</p></article><article><span class="about-number">03</span><h3>Platform admin</h3><p>Admins review pharmacy listings and manage access from a protected portal.</p></article></div><p class="medical-note">Similar salt results are informational only. Ask a doctor or pharmacist before changing medicines.</p></section>
+
+<section class="quick-benefits" aria-label="How MediFind helps"><div><span class="benefit-icon">&#9906;</span><div><strong>Search by name or salt</strong><small>Find the medicine you need</small></div></div><div><span class="benefit-icon">&#8644;</span><div><strong>Compare local pharmacies</strong><small>See distance, stock and price</small></div></div><div><span class="benefit-icon">&#10003;</span><div><strong>Check verified shops</strong><small>Contact the pharmacy directly</small></div></div></section>
+
+<section class="featured-section" id="featured-medicines"><div class="section-heading"><div><p class="eyebrow">AVAILABLE NEAR YOU</p><h2>Popular listed medicines</h2><p>Real listings from verified pharmacies. Call the shop to confirm current stock.</p></div><a class="browse-link" href="/search">Browse all medicines <span>&#8594;</span></a></div>
+  {% if featured_listings %}<div class="medicine-cards">{% for listing in featured_listings %}<article class="medicine-card">
+    {% if listing.image_url %}<img class="medicine-card-photo" src="{{ listing.image_url }}" alt="{{ listing.medicine.name }}" loading="lazy">{% else %}<div class="medicine-card-art" aria-hidden="true"><span>+</span><small>MEDICINE</small></div>{% endif %}
+    <div class="medicine-card-body"><span class="stock-chip">{{ listing.stock }} in stock</span><h3>{{ listing.medicine.name }}</h3><p class="medicine-salt">{{ listing.medicine.salt }}</p><div class="listing-shop"><span class="shop-pin">&#9679;</span><div><strong>{{ listing.pharmacy.name }}</strong><small>{{ listing.pharmacy.address }}</small></div></div><div class="medicine-card-bottom"><span class="listed-price">&#8377;{{ '%.2f'|format(listing.price) }}</span><a href="/search?q={{ listing.medicine.name|urlencode }}">View listing <span>&#8594;</span></a></div></div>
+  </article>{% endfor %}</div>{% else %}<div class="featured-empty"><div class="empty-cross">+</div><div><strong>Medicine listings are coming soon</strong><p>Check back soon or search the catalogue for a medicine.</p></div><a class="ghost" href="/search">Explore catalogue</a></div>{% endif %}
+</section>
+
+<section class="about-section" id="about"><div class="about-heading"><div><p class="eyebrow">ABOUT MEDIFIND</p><h2>A simpler way to find local medicine.</h2></div><p>MediFind connects people looking for medicine with nearby pharmacies that list their current stock and prices.</p></div><div class="about-grid"><article><span class="about-number">01</span><h3>For customers</h3><p>Search medicines, compare nearby availability, and contact the pharmacy directly.</p><a class="portal-link" href="/login">Customer login &#8594;</a></article><article><span class="about-number">02</span><h3>For pharmacies</h3><p>Shopkeepers can list their pharmacy and keep medicine stock and prices up to date.</p><a class="portal-link" href="/login/shopkeeper">Shopkeeper portal login &#8594;</a><a class="portal-link" href="/register?role=shopkeeper">Register your pharmacy &#8594;</a></article><article><span class="about-number">03</span><h3>Platform admin</h3><p>Admins review pharmacy listings and manage access from a protected portal.</p><a class="portal-link" href="/login/admin">Admin portal login &#8594;</a></article></div><p class="medical-note">Similar salt results are informational only. Ask a doctor or pharmacist before changing medicines.</p></section>
+<script>
+(() => {
+  const slides = [...document.querySelectorAll('.hero-slide')];
+  const dots = [...document.querySelectorAll('.slide-dot')];
+  if (slides.length < 2 || dots.length !== slides.length) return;
+  let active = 0;
+  let timer;
+  const show = (index) => {
+    active = (index + slides.length) % slides.length;
+    slides.forEach((slide, i) => { slide.classList.toggle('is-active', i === active); });
+    dots.forEach((dot, i) => { dot.classList.toggle('is-active', i === active); dot.setAttribute('aria-pressed', String(i === active)); });
+  };
+  const restart = () => { window.clearInterval(timer); timer = window.setInterval(() => show(active + 1), 5500); };
+  dots.forEach((dot, i) => dot.addEventListener('click', () => { show(i); restart(); }));
+  const carousel = document.querySelector('.hero-carousel');
+  carousel.addEventListener('mouseenter', () => window.clearInterval(timer));
+  carousel.addEventListener('mouseleave', restart);
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) restart();
+})();
+</script>
 {% endblock %}
