@@ -2,7 +2,7 @@ import os
 import secrets
 import uuid
 from datetime import datetime
-from math import atan2, cos, radians, sin, sqrt
+from math import atan2, cos, isfinite, radians, sin, sqrt
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
@@ -56,6 +56,7 @@ class Medicine(db.Model):
     category = db.Column(db.String(100), default="")
     uses = db.Column(db.String(500), default="")
     prescription_required = db.Column(db.Boolean, default=False)
+    owner_pharmacy_id = db.Column(db.Integer, db.ForeignKey("pharmacy.id"), nullable=True, index=True)
     inventory = db.relationship("Inventory", backref="medicine", cascade="all, delete-orphan")
 
 
@@ -132,11 +133,15 @@ def initialize_database():
     db.create_all()
     inspector = inspect(db.engine)
     inventory_columns = {column["name"] for column in inspector.get_columns("inventory")}
+    medicine_columns = {column["name"] for column in inspector.get_columns("medicine")}
     with db.engine.begin() as connection:
         if "image_url" not in inventory_columns:
             connection.execute(text("ALTER TABLE inventory ADD COLUMN image_url VARCHAR(500)"))
         if "image_public_id" not in inventory_columns:
             connection.execute(text("ALTER TABLE inventory ADD COLUMN image_public_id VARCHAR(250)"))
+        if "owner_pharmacy_id" not in medicine_columns:
+            connection.execute(text("ALTER TABLE medicine ADD COLUMN owner_pharmacy_id INTEGER REFERENCES pharmacy(id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_medicine_owner_pharmacy_id ON medicine(owner_pharmacy_id)"))
     if os.environ.get("DB_SEED_DEMO", "0" if database_url.startswith("postgresql+") else "1") == "1":
         seed()
     ensure_admin()
@@ -158,8 +163,11 @@ def upload_inventory_image(upload):
         return None
     if not cloudinary_ready():
         raise RuntimeError("Medicine photo upload is not configured yet. Add Cloudinary environment variables.")
-    import cloudinary
-    import cloudinary.uploader
+    try:
+        import cloudinary
+        import cloudinary.uploader
+    except ImportError as exc:
+        raise RuntimeError("Image upload is unavailable until the Cloudinary package is installed in this Python environment.") from exc
     try:
         upload.stream.seek(0)
         image = Image.open(upload.stream)
@@ -337,8 +345,45 @@ def shop():
     if not account.pharmacy:
         abort(403)
     inventory = Inventory.query.filter_by(pharmacy_id=account.pharmacy.id).all()
-    medicines = Medicine.query.order_by(Medicine.name).all()
+    medicines = Medicine.query.filter(db.or_(Medicine.owner_pharmacy_id.is_(None), Medicine.owner_pharmacy_id == account.pharmacy.id)).order_by(Medicine.name).all()
     return render_template("shop.html", shop=account.pharmacy, inventory=inventory, medicines=medicines)
+
+
+def valid_coordinates(lat_value, lon_value):
+    try:
+        lat, lon = float(lat_value), float(lon_value)
+        if not isfinite(lat) or not isfinite(lon) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError
+        return lat, lon
+    except (TypeError, ValueError):
+        raise ValueError("Enter valid latitude and longitude.")
+
+
+@app.post("/shop/profile")
+def update_shop_profile():
+    account = require_role("shopkeeper")
+    if not account:
+        return redirect(url_for("login"))
+    shop = account.pharmacy
+    if not shop:
+        abort(403)
+    name = request.form.get("name", "").strip()
+    address = request.form.get("address", "").strip()
+    try:
+        lat, lon = valid_coordinates(request.form.get("lat"), request.form.get("lon"))
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("shop"))
+    if not name or not address:
+        flash("Pharmacy name and address are required.", "error")
+        return redirect(url_for("shop"))
+    shop.name, shop.address, shop.phone = name, address, request.form.get("phone", "").strip()
+    shop.lat, shop.lon = lat, lon
+    # Location and identity changes require a fresh admin review.
+    shop.verified = False
+    db.session.commit()
+    flash("Pharmacy details saved. An administrator must verify the changes before the shop appears in search.")
+    return redirect(url_for("shop"))
 
 
 @app.post("/shop/inventory")
@@ -350,13 +395,13 @@ def update_inventory():
         stock = int(request.form.get("stock", ""))
         price = float(request.form.get("price", ""))
         medicine_id = int(request.form.get("medicine_id", ""))
-        if stock < 0 or price < 0 or price != price or price == float("inf"):
+        if stock < 0 or not isfinite(price) or price < 0:
             raise ValueError
     except ValueError:
         flash("Enter a valid non-negative stock and price.", "error")
         return redirect(url_for("shop"))
     med = db.session.get(Medicine, medicine_id)
-    if not med:
+    if not med or (med.owner_pharmacy_id is not None and med.owner_pharmacy_id != account.pharmacy_id):
         abort(404)
     inv = Inventory.query.filter_by(pharmacy_id=account.pharmacy_id, medicine_id=medicine_id).first()
     uploaded_asset = None
@@ -383,6 +428,75 @@ def update_inventory():
     if uploaded_asset and old_public_id:
         delete_cloudinary_image(old_public_id)
     flash("Inventory updated.")
+    return redirect(url_for("shop"))
+
+
+@app.post("/shop/medicine")
+def add_shop_medicine():
+    account = require_role("shopkeeper")
+    if not account:
+        return redirect(url_for("login"))
+    if not account.pharmacy:
+        abort(403)
+    name = request.form.get("name", "").strip()[:160]
+    salt = request.form.get("salt", "").strip()[:250]
+    category = request.form.get("category", "").strip()[:100]
+    uses = request.form.get("uses", "").strip()[:500]
+    try:
+        stock = int(request.form.get("stock", ""))
+        price = float(request.form.get("price", ""))
+        if stock < 0 or not isfinite(price) or price < 0:
+            raise ValueError
+    except ValueError:
+        flash("Enter valid non-negative stock and price.", "error")
+        return redirect(url_for("shop"))
+    if not name or not salt or not category:
+        flash("Medicine name, active salt, and category are required.", "error")
+        return redirect(url_for("shop"))
+    if Medicine.query.filter(db.func.lower(Medicine.name) == name.lower(), db.or_(Medicine.owner_pharmacy_id.is_(None), Medicine.owner_pharmacy_id == account.pharmacy_id)).first():
+        flash("That medicine already exists in the catalogue available to your shop. Add it from the existing-medicine form.", "error")
+        return redirect(url_for("shop"))
+    med = Medicine(name=name, salt=salt, category=category, uses=uses, owner_pharmacy_id=account.pharmacy_id)
+    db.session.add(med)
+    db.session.flush()
+    db.session.add(Inventory(pharmacy_id=account.pharmacy_id, medicine_id=med.id, stock=stock, price=price))
+    db.session.commit()
+    flash("Medicine added to your shop catalogue and inventory.")
+    return redirect(url_for("shop"))
+
+
+@app.post("/shop/medicine/<int:medicine_id>/category")
+def update_shop_medicine_category(medicine_id):
+    account = require_role("shopkeeper")
+    if not account:
+        return redirect(url_for("login"))
+    med = db.session.get(Medicine, medicine_id)
+    if not med or med.owner_pharmacy_id != account.pharmacy_id:
+        abort(404)
+    category = request.form.get("category", "").strip()[:100]
+    if not category:
+        flash("Category cannot be empty.", "error")
+    else:
+        med.category = category
+        db.session.commit()
+        flash("Medicine category updated.")
+    return redirect(url_for("shop"))
+
+
+@app.post("/shop/inventory/<int:inventory_id>/delete")
+def delete_shop_inventory(inventory_id):
+    account = require_role("shopkeeper")
+    if not account:
+        return redirect(url_for("login"))
+    inv = Inventory.query.filter_by(id=inventory_id, pharmacy_id=account.pharmacy_id).first_or_404()
+    med = inv.medicine
+    public_id = inv.image_public_id
+    db.session.delete(inv)
+    if med.owner_pharmacy_id == account.pharmacy_id:
+        db.session.delete(med)
+    db.session.commit()
+    delete_cloudinary_image(public_id)
+    flash("Medicine removed from your shop inventory.")
     return redirect(url_for("shop"))
 
 
