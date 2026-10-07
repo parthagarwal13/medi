@@ -10,6 +10,7 @@ from sqlalchemy import UniqueConstraint, inspect, text
 from werkzeug.security import check_password_hash, generate_password_hash
 from PIL import Image, UnidentifiedImageError
 from dotenv import load_dotenv
+from catalog_nlem_2022 import seed_nlem_2022
 
 load_dotenv()
 
@@ -91,6 +92,11 @@ def distance_km(lat1, lon1, lat2, lon2):
     return 6371.0 * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
+def salt_tokens(salt):
+    ignored = {"mg", "g", "ml", "mcg", "microgram", "micrograms", "iu", "units", "tablet", "tablets"}
+    return {token.strip(".,()[]") for token in salt.lower().replace("+", " ").split() if any(char.isalpha() for char in token) and token.strip(".,()[]") not in ignored}
+
+
 def seed():
     if Medicine.query.count():
         return
@@ -152,6 +158,13 @@ def init_db_command():
     """Create/update schema and initialize local demo content."""
     initialize_database()
     print("Database schema initialized.")
+
+
+@app.cli.command("seed-medicine-catalog")
+def seed_medicine_catalog_command():
+    """Add the NLEM 2022 generic medicine names without creating stock listings."""
+    added = seed_nlem_2022(db, Medicine)
+    print(f"Medicine catalogue ready. Added {added} entries; existing entries were preserved.")
 
 
 def cloudinary_ready():
@@ -249,23 +262,29 @@ def search():
     except ValueError:
         flash("Location coordinates were invalid. Showing results near the demo location.", "error")
         lat, lon = 23.456, 76.270
-    medicines = Medicine.query.filter(db.or_(Medicine.name.ilike(f"%{q}%"), Medicine.salt.ilike(f"%{q}%"))).order_by(Medicine.name).all() if q else Medicine.query.order_by(Medicine.name).limit(20).all()
+    catalog = Medicine.query.order_by(Medicine.name).all()
+    medicines = [m for m in catalog if q.casefold() in m.name.casefold() or q.casefold() in m.salt.casefold()] if q else catalog[:20]
+    available_inventory = Inventory.query.join(Pharmacy).filter(Pharmacy.verified.is_(True), Inventory.stock > 0).all()
+    inventory_by_medicine = {}
+    for inventory in available_inventory:
+        inventory_by_medicine.setdefault(inventory.medicine_id, []).append(inventory)
     results = []
     for med in medicines:
-        rows = Inventory.query.join(Pharmacy).filter(Inventory.medicine_id == med.id, Pharmacy.verified.is_(True), Inventory.stock > 0).all()
+        rows = inventory_by_medicine.get(med.id, [])
         shops = [{"pharmacy": i.pharmacy.name, "pharmacy_id": i.pharmacy.id, "address": i.pharmacy.address, "phone": i.pharmacy.phone, "stock": i.stock, "price": i.price, "image_url": i.image_url, "distance": round(distance_km(lat, lon, i.pharmacy.lat, i.pharmacy.lon), 2), "lat": i.pharmacy.lat, "lon": i.pharmacy.lon} for i in rows]
         shops.sort(key=lambda x: (x["distance"], x["price"]))
         nearest_id = min(shops, key=lambda x: (x["distance"], x["price"]))["pharmacy_id"] if shops else None
         cheapest_id = min(shops, key=lambda x: (x["price"], x["distance"]))["pharmacy_id"] if shops else None
-        ignored = {"mg", "g", "ml", "mcg", "microgram", "micrograms", "iu", "units", "tablet", "tablets"}
-        tokens = {t.strip(".,()") for t in med.salt.lower().replace("+", " ").split() if any(c.isalpha() for c in t) and t.strip(".,()") not in ignored}
+        tokens = salt_tokens(med.salt)
         alternatives = []
         if tokens:
-            for other in Medicine.query.filter(Medicine.id != med.id).all():
-                other_tokens = {t.strip(".,()") for t in other.salt.lower().replace("+", " ").split() if any(c.isalpha() for c in t) and t.strip(".,()") not in ignored}
+            for other in catalog:
+                if other.id == med.id:
+                    continue
+                other_tokens = salt_tokens(other.salt)
                 score = len(tokens & other_tokens)
                 if score:
-                    available = Inventory.query.join(Pharmacy).filter(Inventory.medicine_id == other.id, Pharmacy.verified.is_(True), Inventory.stock > 0).all()
+                    available = inventory_by_medicine.get(other.id, [])
                     if available:
                         nearest = min(available, key=lambda i: (distance_km(lat, lon, i.pharmacy.lat, i.pharmacy.lon), i.price))
                         alternatives.append({"name": other.name, "salt": other.salt, "score": score, "nearest": nearest.pharmacy.name, "distance": round(distance_km(lat, lon, nearest.pharmacy.lat, nearest.pharmacy.lon), 2), "price": nearest.price, "stock": nearest.stock, "phone": nearest.pharmacy.phone, "lat": nearest.pharmacy.lat, "lon": nearest.pharmacy.lon, "image_url": nearest.image_url})
@@ -276,8 +295,10 @@ def search():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    selected_role = "shopkeeper" if request.args.get("role") == "shopkeeper" else "customer"
     if request.method == "POST":
         role = request.form.get("role", "customer")
+        selected_role = role
         if role not in ("customer", "shopkeeper"):
             abort(400)
         name = request.form.get("name", "").strip()
@@ -285,10 +306,10 @@ def register():
         password = request.form.get("password", "")
         if not name or len(password) < 8 or "@" not in email:
             flash("Enter a name, valid email, and password with at least 8 characters.", "error")
-            return render_template("register.html")
+            return render_template("register.html", selected_role=selected_role)
         if Account.query.filter_by(email=email).first():
             flash("That email is already registered.", "error")
-            return render_template("register.html")
+            return render_template("register.html", selected_role=selected_role)
         shop = None
         if role == "shopkeeper":
             try:
@@ -297,11 +318,11 @@ def register():
                     raise ValueError
             except (ValueError, KeyError):
                 flash("Enter valid latitude and longitude.", "error")
-                return render_template("register.html")
+                return render_template("register.html", selected_role=selected_role)
             shop = Pharmacy(name=request.form.get("shop_name", "").strip(), owner=name, phone=request.form.get("phone", "").strip(), address=request.form.get("address", "").strip(), lat=lat, lon=lon, verified=False)
             if not shop.name or not shop.address:
                 flash("Pharmacy name and address are required.", "error")
-                return render_template("register.html")
+                return render_template("register.html", selected_role=selected_role)
             db.session.add(shop)
             db.session.flush()
         account = Account(name=name, email=email, password_hash=generate_password_hash(password), role=role, pharmacy=shop)
@@ -311,7 +332,7 @@ def register():
         session["account_id"] = account.id
         flash("Account created. Your pharmacy will appear in search after admin verification.")
         return redirect(url_for("shop" if role == "shopkeeper" else "home"))
-    return render_template("register.html")
+    return render_template("register.html", selected_role=selected_role)
 
 
 @app.route("/login", methods=["GET", "POST"])
