@@ -8,7 +8,7 @@
 <body>
 <header class="site-header"><div class="nav">
   <a class="brand" href="/" aria-label="MediFind home"><span class="brand-mark">+</span>Medi<span class="brand-accent">Find</span></a>
-  <nav class="nav-links"><a href="/">Find medicine</a><a href="/login/shopkeeper">Shopkeeper portal</a><a href="/login/admin">Admin portal</a></nav>
+  <nav class="nav-links"><a href="/">Find medicine</a></nav>
   <div class="nav-actions"><button type="button" class="location-button" onclick="useLocation(this)"><span class="location-dot"></span>Use my location</button><span id="location-status" class="location-status" aria-live="polite"></span>
   {% if current_user %}<span class="nav-user">{{current_user.name}}</span><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button class="text-button">Log out</button></form>{% else %}<a class="nav-login" href="/login">Log in</a><a class="button nav-join" href="/register">Join free</a>{% endif %}</div>
 </div></header>
@@ -23,13 +23,19 @@ function applySavedLocation() {
   if (!saved) return;
   try {
     const coords = JSON.parse(saved);
+    if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) throw new Error('Invalid saved location');
     document.querySelectorAll('form.search').forEach(form => {
       const lat = form.querySelector('[name="lat"]'), lon = form.querySelector('[name="lon"]');
       if (lat && lon) { lat.value = coords.lat; lon.value = coords.lon; }
     });
-    const status = document.getElementById('location-status');
-    if (status) status.textContent = 'Location saved';
+    hideLocationControl();
   } catch (_) { localStorage.removeItem('medifind-location'); }
+}
+function hideLocationControl() {
+  const button = document.querySelector('.location-button');
+  const status = document.getElementById('location-status');
+  if (button) button.hidden = true;
+  if (status) status.hidden = true;
 }
 function useLocation(button) {
   const status = document.getElementById('location-status');
@@ -40,7 +46,6 @@ function useLocation(button) {
     const coords = {lat: position.coords.latitude, lon: position.coords.longitude};
     localStorage.setItem('medifind-location', JSON.stringify(coords));
     applySavedLocation(); button.disabled = false;
-    if(status) status.textContent = 'Location ready';
   }, () => { button.disabled = false; if(status) status.textContent = 'Could not get location'; }, {timeout: 10000, maximumAge: 300000});
 }
 document.addEventListener('DOMContentLoaded', applySavedLocation);
