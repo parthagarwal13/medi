@@ -73,6 +73,18 @@ class Inventory(db.Model):
     __table_args__ = (UniqueConstraint("pharmacy_id", "medicine_id", name="uq_inventory_shop_medicine"),)
 
 
+class OnlineOffer(db.Model):
+    """A price and delivery estimate published by an online pharmacy platform."""
+    id = db.Column(db.Integer, primary_key=True)
+    medicine_id = db.Column(db.Integer, db.ForeignKey("medicine.id"), nullable=False, index=True)
+    platform = db.Column(db.String(80), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    delivery_days = db.Column(db.Integer, nullable=False, default=3)
+    product_url = db.Column(db.String(500), default="")
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    medicine = db.relationship("Medicine", backref=db.backref("online_offers", cascade="all, delete-orphan"))
+
+
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
@@ -135,6 +147,24 @@ def ensure_admin():
         db.session.commit()
 
 
+def ensure_online_offers():
+    """Seed safe demo comparison rows once; replace with partner feeds in production."""
+    if OnlineOffer.query.count() or not Medicine.query.count():
+        return
+    by_name = {m.name: m for m in Medicine.query.all()}
+    offers = {
+        "Combiflam": [("Tata 1mg", 132, 2, "https://www.1mg.com/search/all?name=Combiflam"), ("Yashoda Health Cart", 138, 3, "https://www.google.com/search?q=Combiflam+online")],
+        "Paracetamol": [("Tata 1mg", 24, 2, "https://www.1mg.com/search/all?name=Paracetamol"), ("PharmEasy", 26, 3, "https://pharmeasy.in/search/all?name=Paracetamol")],
+        "Cetirizine": [("Tata 1mg", 39, 2, "https://www.1mg.com/search/all?name=Cetirizine"), ("Apollo 24|7", 43, 2, "https://www.apollo247.com/search-medicines/Cetirizine")],
+        "Oral rehydration salts": [("Tata 1mg", 22, 2, "https://www.1mg.com/search/all?name=ORS"), ("PharmEasy", 21, 3, "https://pharmeasy.in/search/all?name=ORS")],
+    }
+    for name, rows in offers.items():
+        med = by_name.get(name)
+        if med:
+            db.session.add_all([OnlineOffer(medicine_id=med.id, platform=p, price=price, delivery_days=days, product_url=url) for p, price, days, url in rows])
+    db.session.commit()
+
+
 def initialize_database():
     db.create_all()
     inspector = inspect(db.engine)
@@ -150,6 +180,7 @@ def initialize_database():
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_medicine_owner_pharmacy_id ON medicine(owner_pharmacy_id)"))
     if os.environ.get("DB_SEED_DEMO", "0" if database_url.startswith("postgresql+") else "1") == "1":
         seed()
+    ensure_online_offers()
     ensure_admin()
 
 
@@ -297,6 +328,8 @@ def search():
                         alternatives.append({"name": other.name, "salt": other.salt, "score": score, "nearest": nearest.pharmacy.name, "distance": round(distance_km(lat, lon, nearest.pharmacy.lat, nearest.pharmacy.lon), 2), "price": nearest.price, "stock": nearest.stock, "phone": nearest.pharmacy.phone, "lat": nearest.pharmacy.lat, "lon": nearest.pharmacy.lon, "image_url": nearest.image_url})
         alternatives.sort(key=lambda x: (-x["score"], x["distance"], x["price"]))
         results.append({"medicine": med, "shops": shops, "nearest_id": nearest_id, "cheapest_id": cheapest_id, "alternatives": alternatives[:5]})
+        offers = [{"platform": o.platform, "price": o.price, "delivery_days": o.delivery_days, "product_url": o.product_url, "updated_at": o.updated_at} for o in sorted(med.online_offers, key=lambda x: (x.price, x.delivery_days))]
+        results[-1]["online_offers"] = offers
     return render_template("search.html", q=q, results=results, lat=lat, lon=lon)
 
 
