@@ -172,6 +172,24 @@ def ensure_online_offers():
         ("Combiflam", "Ibuprofen 400 mg + Paracetamol 325 mg", "Analgesic / Antipyretic"),
         ("Dolo 650", "Paracetamol 650 mg", "Analgesic / Antipyretic"),
         ("Crocin 500", "Paracetamol 500 mg", "Analgesic / Antipyretic"),
+        ("Moov Pain Relief Spray", "Diclofenac + Methyl salicylate + Menthol", "Topical pain relief"),
+        ("Volini Pain Relief Gel", "Diclofenac + Methyl salicylate + Menthol", "Topical pain relief"),
+        ("Volini Spray", "Diclofenac + Methyl salicylate + Menthol", "Topical pain relief"),
+        ("Dettol Antiseptic Liquid", "Chloroxylenol 4.8%", "Antiseptic"),
+        ("Dettol Handwash", "Chloroxylenol", "Hand hygiene"),
+        ("Band-Aid", "Sterile adhesive dressing", "First aid"),
+        ("Savlon Antiseptic Liquid", "Cetrimide + Chlorhexidine", "Antiseptic"),
+        ("Iodex UltraGel", "Diclofenac diethylamine", "Topical pain relief"),
+        ("Vicks VapoRub", "Menthol + Camphor + Eucalyptus oil", "Cold relief"),
+        ("Vicks Cough Drops", "Menthol", "Throat lozenge"),
+        ("ENO Fruit Salt", "Sodium bicarbonate + Citric acid", "Antacid"),
+        ("Gelusil", "Aluminium hydroxide + Magnesium hydroxide", "Antacid"),
+        ("Zincovit", "Multivitamins and minerals", "Nutritional supplement"),
+        ("ORS Orange", "Oral rehydration salts", "Rehydration"),
+        ("Benadryl Cough Syrup", "Diphenhydramine", "Cough relief"),
+        ("Sinarest", "Paracetamol + Phenylephrine + Cetirizine", "Cold relief"),
+        ("Meftal-P", "Mefenamic acid", "Analgesic / Antipyretic"),
+        ("Nivea Creme", "Moisturising cream", "Skin care"),
     ]
     existing = {m.name.casefold() for m in Medicine.query.all()}
     added = [Medicine(name=n, salt=s, category=c, uses="Check the pack label and ask a pharmacist when needed.") for n, s, c in common if n.casefold() not in existing]
@@ -190,6 +208,17 @@ def ensure_online_offers():
         "Dolo 650": [("Tata 1mg", 32, 2, "https://www.1mg.com/search/all?name=Dolo%20650"), ("Apollo 24|7", 35, 2, "https://www.apollo247.com/search-medicines/Dolo%20650")],
         "Crocin 500": [("Tata 1mg", 28, 2, "https://www.1mg.com/search/all?name=Crocin%20500")],
     })
+    common_prices = {
+        "Moov Pain Relief Spray": 155, "Volini Pain Relief Gel": 110, "Volini Spray": 145,
+        "Dettol Antiseptic Liquid": 98, "Dettol Handwash": 115, "Band-Aid": 55,
+        "Savlon Antiseptic Liquid": 92, "Iodex UltraGel": 125, "Vicks VapoRub": 105,
+        "Vicks Cough Drops": 50, "ENO Fruit Salt": 110, "Gelusil": 145,
+        "Zincovit": 125, "ORS Orange": 22, "Benadryl Cough Syrup": 115,
+        "Sinarest": 40, "Meftal-P": 55, "Nivea Creme": 95,
+    }
+    for name, price in common_prices.items():
+        encoded = name.replace(" ", "%20")
+        offers.setdefault(name, [("Tata 1mg", price, 2, f"https://www.1mg.com/search/all?name={encoded}"), ("PharmEasy", price + 5, 3, f"https://pharmeasy.in/search/all?name={encoded}")])
     for name, rows in offers.items():
         med = by_name.get(name)
         if med and not OnlineOffer.query.filter_by(medicine_id=med.id).first():
