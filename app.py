@@ -1,6 +1,7 @@
 import os
 import secrets
 import uuid
+from difflib import SequenceMatcher
 from datetime import datetime
 from math import atan2, cos, isfinite, radians, sin, sqrt
 
@@ -109,6 +110,20 @@ def salt_tokens(salt):
     return {token.strip(".,()[]") for token in salt.lower().replace("+", " ").split() if any(char.isalpha() for char in token) and token.strip(".,()[]") not in ignored}
 
 
+def search_score(query, medicine):
+    """Rank exact, partial and typo-tolerant medicine matches."""
+    q = " ".join(query.casefold().split())
+    name = medicine.name.casefold()
+    salt = medicine.salt.casefold()
+    if q == name:
+        return 1.0
+    if q in name or q in salt:
+        return 0.9
+    words = name.split()
+    best = max([SequenceMatcher(None, q, name).ratio()] + [SequenceMatcher(None, q, word).ratio() for word in words])
+    return best
+
+
 def seed():
     if Medicine.query.count():
         return
@@ -149,8 +164,20 @@ def ensure_admin():
 
 def ensure_online_offers():
     """Seed safe demo comparison rows once; replace with partner feeds in production."""
-    if OnlineOffer.query.count() or not Medicine.query.count():
+    if not Medicine.query.count():
         return
+    # Keep frequently searched Indian brands in the catalogue even when only the NLEM catalogue was imported.
+    common = [
+        ("Digene", "Aluminium hydroxide + Magnesium hydroxide + Simethicone", "Antacid"),
+        ("Combiflam", "Ibuprofen 400 mg + Paracetamol 325 mg", "Analgesic / Antipyretic"),
+        ("Dolo 650", "Paracetamol 650 mg", "Analgesic / Antipyretic"),
+        ("Crocin 500", "Paracetamol 500 mg", "Analgesic / Antipyretic"),
+    ]
+    existing = {m.name.casefold() for m in Medicine.query.all()}
+    added = [Medicine(name=n, salt=s, category=c, uses="Check the pack label and ask a pharmacist when needed.") for n, s, c in common if n.casefold() not in existing]
+    if added:
+        db.session.add_all(added)
+        db.session.commit()
     by_name = {m.name: m for m in Medicine.query.all()}
     offers = {
         "Combiflam": [("Tata 1mg", 132, 2, "https://www.1mg.com/search/all?name=Combiflam"), ("Yashoda Health Cart", 138, 3, "https://www.google.com/search?q=Combiflam+online")],
@@ -158,9 +185,14 @@ def ensure_online_offers():
         "Cetirizine": [("Tata 1mg", 39, 2, "https://www.1mg.com/search/all?name=Cetirizine"), ("Apollo 24|7", 43, 2, "https://www.apollo247.com/search-medicines/Cetirizine")],
         "Oral rehydration salts": [("Tata 1mg", 22, 2, "https://www.1mg.com/search/all?name=ORS"), ("PharmEasy", 21, 3, "https://pharmeasy.in/search/all?name=ORS")],
     }
+    offers.update({
+        "Digene": [("Tata 1mg", 125, 2, "https://www.1mg.com/search/all?name=Digene"), ("PharmEasy", 118, 3, "https://pharmeasy.in/search/all?name=Digene")],
+        "Dolo 650": [("Tata 1mg", 32, 2, "https://www.1mg.com/search/all?name=Dolo%20650"), ("Apollo 24|7", 35, 2, "https://www.apollo247.com/search-medicines/Dolo%20650")],
+        "Crocin 500": [("Tata 1mg", 28, 2, "https://www.1mg.com/search/all?name=Crocin%20500")],
+    })
     for name, rows in offers.items():
         med = by_name.get(name)
-        if med:
+        if med and not OnlineOffer.query.filter_by(medicine_id=med.id).first():
             db.session.add_all([OnlineOffer(medicine_id=med.id, platform=p, price=price, delivery_days=days, product_url=url) for p, price, days, url in rows])
     db.session.commit()
 
@@ -301,7 +333,12 @@ def search():
         flash("Location coordinates were invalid. Showing results near the demo location.", "error")
         lat, lon = 23.456, 76.270
     catalog = Medicine.query.order_by(Medicine.name).all()
-    medicines = [m for m in catalog if q.casefold() in m.name.casefold() or q.casefold() in m.salt.casefold()] if q else catalog[:20]
+    if q:
+        ranked = sorted(((search_score(q, m), m) for m in catalog), key=lambda item: (-item[0], item[1].name.casefold()))
+        # Keep typo matches useful without flooding the page with unrelated catalogue entries.
+        medicines = [m for score, m in ranked if score >= 0.48][:20]
+    else:
+        medicines = catalog[:20]
     available_inventory = Inventory.query.join(Pharmacy).filter(Pharmacy.verified.is_(True), Inventory.stock > 0).all()
     inventory_by_medicine = {}
     for inventory in available_inventory:
