@@ -94,7 +94,12 @@ chatForm.addEventListener('submit', async event => {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({csrf_token: {{csrf_token|tojson}}, messages: chatHistory.slice(-10)})
     });
-    const data = await response.json();
+    const responseText = await response.text();
+    let data;
+    try { data = JSON.parse(responseText); }
+    catch (_) {
+      throw new Error('Chat server se JSON response nahi aaya (HTTP ' + response.status + '). Vercel deployment ko check karke redeploy karein.');
+    }
     if (!response.ok) throw new Error(data.error || 'Could not reach the assistant.');
     pending.textContent = data.reply;
     chatHistory.push({role: 'assistant', content: data.reply});
