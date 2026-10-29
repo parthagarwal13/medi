@@ -412,7 +412,21 @@ def ai_chat():
         if exc.code == 429:
             return jsonify(error="Groq ki request limit abhi poori hai. Thodi der baad try karein."), 503
         if exc.code == 403:
-            return jsonify(error="Groq ne is model ki permission deny ki (HTTP 403). Groq Console → Settings → Limits mein organization aur project dono ke liye openai/gpt-oss-20b allow karein; phir nayi API key Vercel mein set karke redeploy karein."), 502
+            try:
+                error_info = json.loads(upstream_body).get("error", {})
+            except (json.JSONDecodeError, AttributeError):
+                error_info = {}
+            error_code = error_info.get("code", "") if isinstance(error_info, dict) else ""
+            if error_code == "model_permission_blocked_org":
+                message = "Groq organization ne openai/gpt-oss-20b block kiya hai. Usi organization mein Settings → Limits par model allow karo."
+            elif error_code == "model_permission_blocked_project":
+                message = "Groq project ne openai/gpt-oss-20b block kiya hai. Vercel ki GROQ_API_KEY isi allowed project se banao, ya us key ke project mein model allow karo."
+            else:
+                detail = error_info.get("message", "") if isinstance(error_info, dict) else ""
+                detail = detail.replace(api_key, "[redacted]") if isinstance(detail, str) else ""
+                message = "Groq ne request ko permission nahi di (HTTP 403%s). " % (", " + error_code if error_code else "")
+                message += detail[:350] if detail else "Vercel mein GROQ_API_KEY jis project se bani hai, usi project aur organization mein model allow check karo."
+            return jsonify(error=message), 502
         if exc.code == 400:
             return jsonify(error="Groq request/model setting reject hui. Vercel mein GROQ_MODEL ko openai/gpt-oss-20b set karein."), 502
         return jsonify(error="Groq service ne request reject ki (HTTP %s). Vercel Function Logs check karein." % exc.code), 502
