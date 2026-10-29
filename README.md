@@ -32,7 +32,7 @@ Create a Cloudinary account and put `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY
 
 ## AI customer chat
 
-The floating MediFind Assistant uses Groq's chat completion API. Create an API key at <https://console.groq.com/keys>, then set `GROQ_API_KEY` in local `.env` and in the Vercel project environment variables. The API key stays server-side. `GROQ_MODEL` can optionally override the model; the default is `llama-3.3-70b-versatile`. Groq's free access is subject to its current account and rate limits. The assistant is for customer support and general information, not diagnosis or prescribing, and it cannot see live search results.
+The floating MediFind Assistant uses Groq's chat completion API. Create an API key at <https://console.groq.com/keys>, then set `GROQ_API_KEY` in local `.env` and in the Vercel project environment variables. The API key stays server-side. `GROQ_MODEL` can optionally override the model; the default is `openai/gpt-oss-20b`. Groq's free access is subject to its current account and rate limits. The assistant is for customer support and general information, not diagnosis or prescribing, and it cannot see live search results.
 
 ## Routes
 

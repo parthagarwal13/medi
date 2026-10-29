@@ -385,8 +385,13 @@ def ai_chat():
         "Never invent live inventory, prices, pharmacy locations, or account data; explain that you cannot see the user's search results. "
         "Reply in the language the user uses, including Hindi/Hinglish. Keep answers concise."
     )
+    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b").strip() or "openai/gpt-oss-20b"
+    # Llama 3.3 was decommissioned for developer/free-tier access in Aug 2026.
+    # Keep older Vercel environment settings working by mapping it to the current model.
+    if model == "llama-3.3-70b-versatile":
+        model = "openai/gpt-oss-20b"
     body = json.dumps({
-        "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        "model": model,
         "messages": [{"role": "system", "content": system_message}, *safe_messages[-10:]],
         "max_completion_tokens": 500,
         "temperature": 0.4,
@@ -399,7 +404,17 @@ def ai_chat():
         if not reply:
             raise ValueError("empty response")
         return jsonify(reply=reply)
-    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError):
+    except HTTPError as exc:
+        upstream_body = exc.read(4000).decode("utf-8", errors="replace")
+        app.logger.error("Groq API returned HTTP %s: %s", exc.code, upstream_body.replace(api_key, "[redacted]")[:1000])
+        if exc.code == 401:
+            return jsonify(error="Groq ne API key reject ki. Vercel mein GROQ_API_KEY ko nayi valid key se update karke redeploy karein."), 502
+        if exc.code == 429:
+            return jsonify(error="Groq ki request limit abhi poori hai. Thodi der baad try karein."), 503
+        if exc.code == 400:
+            return jsonify(error="Groq request/model setting reject hui. Vercel mein GROQ_MODEL ko openai/gpt-oss-20b set karein."), 502
+        return jsonify(error="Groq service ne request reject ki (HTTP %s). Vercel Function Logs check karein." % exc.code), 502
+    except (URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError):
         app.logger.exception("Groq chat request failed")
         return jsonify(error="Sorry, chat is temporarily unavailable. Please try again in a moment."), 502
 
