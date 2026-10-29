@@ -323,6 +323,10 @@ def require_role(*roles):
 @app.before_request
 def csrf_guard():
     if request.method == "POST":
+        # The chat endpoint receives JSON rather than a form post. It validates
+        # its CSRF token from that JSON payload inside ai_chat().
+        if request.endpoint == "ai_chat":
+            return
         sent = request.form.get("csrf_token", "")
         expected = session.get("csrf_token", "")
         if not sent or not expected or not secrets.compare_digest(sent, expected):
