@@ -30,6 +30,10 @@ Fill in `.env` values, then start the app with `python app.py`. The first local 
 
 Create a Cloudinary account and put `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` into local `.env` and Vercel settings. Shopkeepers can then upload a JPG, PNG, or WEBP product photo (up to 5 MB) when adding/updating an inventory listing. The server validates the image, uploads it to the `medifind/medicines` folder, and stores the secure delivery URL and public ID in Postgres. The API secret is used only server-side.
 
+## AI customer chat
+
+The floating MediFind Assistant uses Groq's chat completion API. Create an API key at <https://console.groq.com/keys>, then set `GROQ_API_KEY` in local `.env` and in the Vercel project environment variables. The API key stays server-side. `GROQ_MODEL` can optionally override the model; the default is `llama-3.3-70b-versatile`. Groq's free access is subject to its current account and rate limits. The assistant is for customer support and general information, not diagnosis or prescribing, and it cannot see live search results.
+
 ## Routes
 
 - `/` and `/search`: customer pages; optional browser location is requested from the top navigation.

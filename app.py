@@ -1,6 +1,9 @@
 import os
+import json
 import secrets
 import uuid
+from urllib.request import Request as URLRequest, urlopen
+from urllib.error import HTTPError, URLError
 from difflib import SequenceMatcher
 from datetime import datetime
 from math import atan2, cos, isfinite, radians, sin, sqrt
@@ -348,6 +351,53 @@ def home():
 @app.route("/style.css")
 def stylesheet():
     return send_from_directory(os.path.join(app.root_path, "public"), "style.css")
+
+
+@app.route("/api/chat", methods=["POST"])
+def ai_chat():
+    """Proxy customer chat to Groq without exposing the API key in the browser."""
+    payload = request.get_json(silent=True) or {}
+    if payload.get("csrf_token") != session.get("csrf_token"):
+        return jsonify(error="Session expired. Refresh the page and try again."), 400
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not api_key:
+        return jsonify(error="AI chat is not configured yet. Add GROQ_API_KEY to the server environment."), 503
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not messages or len(messages) > 12:
+        return jsonify(error="Please send a message to continue."), 400
+    safe_messages = []
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") not in ("user", "assistant") or not isinstance(message.get("content"), str):
+            return jsonify(error="Invalid chat message."), 400
+        content = message["content"].strip()
+        if not content or len(content) > 1200:
+            return jsonify(error="Messages must be between 1 and 1200 characters."), 400
+        safe_messages.append({"role": message["role"], "content": content})
+    system_message = (
+        "You are MediFind's friendly customer support assistant. Help people use MediFind to find nearby medicine listings, "
+        "explain that stock and prices should be confirmed with the pharmacy, and answer general wellness questions cautiously. "
+        "You are not a doctor: never diagnose, prescribe, recommend changing doses, or claim a medicine is safe for a specific person. "
+        "For medical decisions, tell users to consult a qualified clinician or pharmacist. For urgent symptoms, advise local emergency care. "
+        "Never invent live inventory, prices, pharmacy locations, or account data; explain that you cannot see the user's search results. "
+        "Reply in the language the user uses, including Hindi/Hinglish. Keep answers concise."
+    )
+    body = json.dumps({
+        "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        "messages": [{"role": "system", "content": system_message}, *safe_messages[-10:]],
+        "max_completion_tokens": 500,
+        "temperature": 0.4,
+    }).encode("utf-8")
+    api_request = URLRequest("https://api.groq.com/openai/v1/chat/completions", data=body, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, method="POST")
+    try:
+        with urlopen(api_request, timeout=25) as response:
+            result = json.loads(response.read(1_000_000))
+        reply = result["choices"][0]["message"]["content"].strip()
+        if not reply:
+            raise ValueError("empty response")
+        return jsonify(reply=reply)
+    except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, json.JSONDecodeError):
+        app.logger.exception("Groq chat request failed")
+        return jsonify(error="Sorry, chat is temporarily unavailable. Please try again in a moment."), 502
 
 
 @app.route("/search")
