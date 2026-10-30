@@ -3,13 +3,13 @@
   <div class="hero-copy">
     <div class="hero-kicker"><span class="kicker-dot"></span> YOUR NEIGHBORHOOD MEDICINE FINDER</div>
     <div class="hero-carousel" aria-label="MediFind highlights" aria-live="polite">
-      <article class="hero-slide is-active"><h1>Medicine nearby.<br><span>Peace of mind, closer.</span></h1><p class="hero-lede">Check availability at verified pharmacies, compare prices, and find the closest shop before you step out.</p></article>
-      <article class="hero-slide"><h1>Know what is <span>in stock.</span></h1><p class="hero-lede">Browse live listings from local pharmacies and call ahead to confirm availability.</p></article>
-      <article class="hero-slide"><h1>Care starts <span>close to home.</span></h1><p class="hero-lede">Find nearby shops, compare listed prices, and make a more confident visit.</p></article>
+      <article class="hero-slide is-active" data-caption="Search by name or salt"><span class="hero-slide-tag"><b>01</b> SEARCH SMARTER</span><h1>Find medicine<br><span>close to home.</span></h1><p class="hero-lede">Search by medicine or salt, then explore nearby pharmacy listings, prices, and stock in one place.</p></article>
+      <article class="hero-slide" data-caption="Compare nearby options"><span class="hero-slide-tag"><b>02</b> COMPARE NEARBY</span><h1>Compare nearby.<br><span>Choose confidently.</span></h1><p class="hero-lede">See listed prices and distances from verified pharmacies. Call ahead to confirm current availability.</p></article>
+      <article class="hero-slide" data-caption="Call ahead with confidence"><span class="hero-slide-tag"><b>03</b> CARE, MADE CLOSER</span><h1>Search smarter.<br><span>Care starts closer.</span></h1><p class="hero-lede">From common medicines to specific salts, start your search on MediFind before you head out.</p></article>
     </div>
     <form class="search search-large" action="/search"><span class="search-icon" aria-hidden="true">&#9906;</span><input name="q" placeholder="Search a medicine or salt..." aria-label="Medicine name or salt"><input type="hidden" name="lat"><input type="hidden" name="lon"><button type="submit">Find medicine <span aria-hidden="true">&#8594;</span></button></form>
     <div class="hero-note"><span>&#10003;</span> No ordering, no guesswork. Call the pharmacy to confirm stock.</div>
-    <div class="slide-controls" role="group" aria-label="Choose a highlight"><button type="button" class="slide-dot is-active" aria-label="Show slide 1" aria-pressed="true"></button><button type="button" class="slide-dot" aria-label="Show slide 2" aria-pressed="false"></button><button type="button" class="slide-dot" aria-label="Show slide 3" aria-pressed="false"></button><span class="slide-caption">Local stock, made easier</span></div>
+    <div class="slide-controls" role="group" aria-label="Choose a highlight"><button type="button" class="slide-dot is-active" aria-label="Show slide 1" aria-pressed="true"></button><button type="button" class="slide-dot" aria-label="Show slide 2" aria-pressed="false"></button><button type="button" class="slide-dot" aria-label="Show slide 3" aria-pressed="false"></button><span class="slide-caption">Search by name or salt</span></div>
   </div>
   <div class="hero-visual"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="visual-glow"></div><div class="medicine-bottle"><div class="bottle-cap"></div><div class="bottle-neck"></div><div class="bottle-body"><div class="bottle-cross">+</div><strong>CARE<br>NEAR YOU</strong><small>MEDIFIND</small></div></div><div class="floating-card availability"><span class="mini-check">&#10003;</span><div><b>Verified nearby</b><small>Pharmacies you can trust</small></div></div><div class="floating-card price-tag"><span class="price-symbol">&#8377;</span><div><b>Compare prices</b><small>Find a better local rate</small></div></div><div class="visual-caption">Good care starts close to home.</div></div>
 </section>
@@ -31,6 +31,7 @@
 (() => {
   const slides = [...document.querySelectorAll('.hero-slide')];
   const dots = [...document.querySelectorAll('.slide-dot')];
+  const caption = document.querySelector('.slide-caption');
   if (slides.length < 2 || dots.length !== slides.length) return;
   let active = 0;
   let timer;
@@ -38,6 +39,7 @@
     active = (index + slides.length) % slides.length;
     slides.forEach((slide, i) => { slide.classList.toggle('is-active', i === active); });
     dots.forEach((dot, i) => { dot.classList.toggle('is-active', i === active); dot.setAttribute('aria-pressed', String(i === active)); });
+    if (caption) caption.textContent = slides[active].dataset.caption || '';
   };
   const restart = () => { window.clearInterval(timer); timer = window.setInterval(() => show(active + 1), 5500); };
   dots.forEach((dot, i) => dot.addEventListener('click', () => { show(i); restart(); }));
