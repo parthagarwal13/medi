@@ -360,7 +360,21 @@ def home():
         if medicine and medicine not in featured_medicines:
             featured_medicines.append(medicine)
 
-    return render_template("index.html", featured_listings=[], featured_medicines=featured_medicines)
+    image_by_name = {
+        "paracetamol": "https://images.apollo247.in/pub/media/catalog/product/X/Y/XYK0001_1.jpg",
+        "paracetamol 500": "https://images.apollo247.in/pub/media/catalog/product/X/Y/XYK0001_1.jpg",
+        "dolo 650": "https://cdn01.pharmeasy.in/dam/productsnowatermark/059346/dolo-650mg-strip-of-15-tablets-combo-3-1753347024-non-watermark.jpg?dim=640x640&q=75",
+        "crocin 500": "https://images.apollo247.in/pub/media/catalog/product/c/r/cro0091_1_1.jpg",
+        "cetirizine": "https://images.apollo247.in/pub/media/catalog/product/C/E/CET0563_1.jpg?tr=w-400%2Cq-80%2Cf-webp%2Cc-at_max",
+        "cetirizine 10": "https://images.apollo247.in/pub/media/catalog/product/C/E/CET0563_1.jpg?tr=w-400%2Cq-80%2Cf-webp%2Cc-at_max",
+        "ors": "https://asset.sastasundar.com/incom/images/product/ORS-Orange-Flavour-Sachet-1771928186-10162673-a.jpg",
+        "ors orange": "https://asset.sastasundar.com/incom/images/product/ORS-Orange-Flavour-Sachet-1771928186-10162673-a.jpg",
+        "combiflam": "https://images.apollo247.in/pub/media/catalog/product/c/o/com0004_1_feb23.jpg?tr=q-80",
+        "digene": "https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy%2Cf_auto%2Cq_auto/NI_CATALOG/IMAGES/CIW/2024/10/14/8fa6373e-4d92-435b-a488-fa6ec2e01f78_270620_6.png",
+        "vicks vaporub": "https://www.bbassets.com/media/uploads/p/xl/263696_5-vicks-vapo-rub-with-menthol-camphor-eucalyptus-oil-provides-relief-from-cold.jpg",
+    }
+    featured_medicine_images = {medicine.id: image_by_name.get(medicine.name.casefold()) for medicine in featured_medicines}
+    return render_template("index.html", featured_listings=[], featured_medicines=featured_medicines, featured_medicine_images=featured_medicine_images)
 
 
 @app.route("/style.css")
