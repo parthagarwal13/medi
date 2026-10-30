@@ -396,7 +396,17 @@ def ai_chat():
         "max_completion_tokens": 500,
         "temperature": 0.4,
     }).encode("utf-8")
-    api_request = URLRequest("https://api.groq.com/openai/v1/chat/completions", data=body, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, method="POST")
+    api_request = URLRequest(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "MediFind/1.0"
+        },
+        method="POST"
+    )
     try:
         with urlopen(api_request, timeout=25) as response:
             result = json.loads(response.read(1_000_000))
