@@ -342,17 +342,25 @@ def inject_globals():
 
 @app.route("/")
 def home():
-    featured_listings = (
-        Inventory.query.join(Medicine).join(Pharmacy)
-        .filter(Pharmacy.verified.is_(True), Inventory.stock > 0)
-        .order_by(Medicine.name, Inventory.price)
-        .limit(8)
-        .all()
-    )
+    # Put familiar, commonly searched medicines first when they exist in the catalogue.
+    popular_names = [
+        ("Paracetamol", "Paracetamol 500", "Paracetamol 500 mg"),
+        ("Dolo 650",),
+        ("Crocin 500",),
+        ("Cetirizine", "Cetirizine 10"),
+        ("ORS", "ORS Orange", "Oral rehydration salts"),
+        ("Combiflam",),
+        ("Digene",),
+        ("Vicks VapoRub",),
+    ]
+    medicines_by_name = {medicine.name.casefold(): medicine for medicine in Medicine.query.all()}
     featured_medicines = []
-    if not featured_listings:
-        featured_medicines = Medicine.query.order_by(Medicine.name).limit(8).all()
-    return render_template("index.html", featured_listings=featured_listings, featured_medicines=featured_medicines)
+    for name_options in popular_names:
+        medicine = next((medicines_by_name[name.casefold()] for name in name_options if name.casefold() in medicines_by_name), None)
+        if medicine and medicine not in featured_medicines:
+            featured_medicines.append(medicine)
+
+    return render_template("index.html", featured_listings=[], featured_medicines=featured_medicines)
 
 
 @app.route("/style.css")
