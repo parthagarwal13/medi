@@ -501,7 +501,9 @@ def search():
                         alternatives.append({"name": other.name, "salt": other.salt, "score": score, "nearest": nearest.pharmacy.name, "distance": round(distance_km(lat, lon, nearest.pharmacy.lat, nearest.pharmacy.lon), 2), "price": nearest.price, "stock": nearest.stock, "phone": nearest.pharmacy.phone, "lat": nearest.pharmacy.lat, "lon": nearest.pharmacy.lon, "image_url": nearest.image_url})
         alternatives.sort(key=lambda x: (-x["score"], x["distance"], x["price"]))
         results.append({"medicine": med, "shops": shops, "nearest_id": nearest_id, "cheapest_id": cheapest_id, "alternatives": alternatives[:5]})
-        offers = [{"platform": o.platform, "price": o.price, "delivery_days": o.delivery_days, "product_url": o.product_url, "updated_at": o.updated_at} for o in sorted(med.online_offers, key=lambda x: (x.price, x.delivery_days))]
+        # The stored online offer prices are demo snapshots, not live provider prices.
+        # Keep only the outbound links here so the page never presents them as current.
+        offers = [{"platform": o.platform, "product_url": o.product_url} for o in sorted(med.online_offers, key=lambda x: x.platform.casefold())]
         results[-1]["online_offers"] = offers
     return render_template("search.html", q=q, results=results, lat=lat, lon=lon)
 
