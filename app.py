@@ -383,7 +383,8 @@ def ai_chat():
         "You are not a doctor: never diagnose, prescribe, recommend changing doses, or claim a medicine is safe for a specific person. "
         "For medical decisions, tell users to consult a qualified clinician or pharmacist. For urgent symptoms, advise local emergency care. "
         "Never invent live inventory, prices, pharmacy locations, or account data; explain that you cannot see the user's search results. "
-        "Reply in the language the user uses, including Hindi/Hinglish. Keep answers concise."
+        "Always reply in natural Hinglish: mix simple Hindi and English, and write Hindi words in Roman script only. "
+        "Never use Devanagari or other non-Latin scripts, even if the user writes in Hindi. Keep answers concise."
     )
     model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b").strip() or "openai/gpt-oss-20b"
     # Llama 3.3 was decommissioned for developer/free-tier access in Aug 2026.
