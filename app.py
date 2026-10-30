@@ -349,7 +349,10 @@ def home():
         .limit(8)
         .all()
     )
-    return render_template("index.html", featured_listings=featured_listings)
+    featured_medicines = []
+    if not featured_listings:
+        featured_medicines = Medicine.query.order_by(Medicine.name).limit(8).all()
+    return render_template("index.html", featured_listings=featured_listings, featured_medicines=featured_medicines)
 
 
 @app.route("/style.css")
