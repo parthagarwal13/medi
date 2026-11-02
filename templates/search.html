@@ -6,4 +6,10 @@
 {% if r.online_offers %}<div class="online-comparison"><div class="online-heading"><div><h3>Check online prices</h3><p>Open the pharmacy website to check its current price and availability.</p></div><span class="online-note">Prices can vary by location and change over time</span></div><div class="online-offers">{% for offer in r.online_offers %}<div class="online-offer"><div class="platform-mark">{{ offer.platform[:1] }}</div><div class="online-platform"><strong>{{offer.platform}}</strong><small>Check current price and stock on their website</small></div><div class="online-price"><a href="{{offer.product_url}}" target="_blank" rel="noopener">Check live price &#8594;</a></div></div>{% endfor %}</div></div>{% endif %}
 {% if r.alternatives %}<div class="alternative"><h3>Similar salt options with availability</h3><p>These are text-matched catalogue options, not a medical recommendation or substitute. Ask a qualified clinician or pharmacist before switching.</p>{% for a in r.alternatives %}<div class="alt-row"><div><b>{{a.name}}</b><br><small>{{a.salt}}</small></div><div>{{a.nearest}} · {{a.distance}} km · ₹{{"%.2f"|format(a.price)}} · stock {{a.stock}}<br><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{a.lat}},{{a.lon}}">Directions</a> · <a href="tel:{{a.phone}}">Call shop</a></div></div>{% endfor %}</div>{% endif %}
 </section>{% endfor %}
+<section class="nearby-pharmacies panel" id="nearby-pharmacies" aria-live="polite">
+  <div class="nearby-heading"><div><p class="eyebrow">NEARBY MEDICAL STORES</p><h2>Medical stores within 100 km</h2><p>Stores are sorted by distance from your current location.</p></div></div>
+  <p class="nearby-message" id="nearby-message">Share your location to see nearby medical stores.</p>
+  <div class="nearby-list" id="nearby-list"></div>
+  <p class="nearby-attribution">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>. Phone numbers appear only when listed; call to confirm medicine availability.</p>
+</section>
 {% endblock %}

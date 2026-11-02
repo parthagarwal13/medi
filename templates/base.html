@@ -35,6 +35,7 @@ function setCurrentLocation(coords) {
     if (lat && lon) { lat.value = coords.lat; lon.value = coords.lon; }
   });
   updateLocationName(coords);
+  loadNearbyPharmacies(coords);
 }
 function clearCurrentLocation() {
   locationLookupId++;
@@ -43,6 +44,10 @@ function clearCurrentLocation() {
   const status = document.getElementById('location-status');
   if (label) label.textContent = 'Share your location';
   if (status) status.hidden = true;
+  const nearbyMessage = document.getElementById('nearby-message');
+  const nearbyList = document.getElementById('nearby-list');
+  if (nearbyMessage) nearbyMessage.textContent = 'Share your location to see nearby medical stores.';
+  if (nearbyList) nearbyList.replaceChildren();
   document.querySelectorAll('form.search').forEach(form => {
     const lat = form.querySelector('[name="lat"]'), lon = form.querySelector('[name="lon"]');
     if (lat && lon) { lat.value = ''; lon.value = ''; }
@@ -52,6 +57,36 @@ function clearCurrentLocation() {
     currentUrl.searchParams.delete('lat');
     currentUrl.searchParams.delete('lon');
     window.location.replace(currentUrl.pathname + currentUrl.search + currentUrl.hash);
+  }
+}
+async function loadNearbyPharmacies(coords) {
+  const panel = document.getElementById('nearby-pharmacies');
+  const message = document.getElementById('nearby-message');
+  const list = document.getElementById('nearby-list');
+  if (!panel || !message || !list) return;
+  message.textContent = 'Finding nearby medical stores…';
+  list.replaceChildren();
+  try {
+    const response = await fetch(`/api/nearby-pharmacies?lat=${encodeURIComponent(coords.lat)}&lon=${encodeURIComponent(coords.lon)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nearby medical stores could not be loaded.');
+    if (!data.pharmacies.length) { message.textContent = 'No mapped medical stores found within 100 km.'; return; }
+    message.textContent = data.pharmacies.length + ' mapped stores within 100 km';
+    data.pharmacies.forEach(shop => {
+      const card = document.createElement('article'); card.className = 'nearby-store';
+      const details = document.createElement('div'); details.className = 'nearby-store-details';
+      const name = document.createElement('h3'); name.textContent = shop.name; details.append(name);
+      const address = document.createElement('p'); address.textContent = `${shop.address} · ${shop.distance} km away`; details.append(address);
+      const actions = document.createElement('div'); actions.className = 'nearby-store-actions';
+      const directions = document.createElement('a'); directions.target = '_blank'; directions.rel = 'noopener';
+      directions.href = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(shop.lat + ',' + shop.lon);
+      directions.textContent = 'Directions'; actions.append(directions);
+      if (shop.phone) { const call = document.createElement('a'); call.href = `tel:${shop.phone}`; call.textContent = `Call ${shop.phone}`; actions.append(call); }
+      else { const unavailable = document.createElement('span'); unavailable.textContent = 'Phone not listed'; actions.append(unavailable); }
+      card.append(details, actions); list.append(card);
+    });
+  } catch (error) {
+    message.textContent = error.message || 'Nearby medical stores could not be loaded.';
   }
 }
 async function updateLocationName(coords) {

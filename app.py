@@ -5,6 +5,7 @@ import uuid
 from urllib.request import Request as URLRequest, urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
+from urllib.parse import urlencode
 from difflib import SequenceMatcher
 from datetime import datetime
 from math import atan2, cos, isfinite, radians, sin, sqrt
@@ -406,6 +407,76 @@ def location_name():
     except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
         app.logger.info("Reverse geocoding unavailable for location label")
         return jsonify(name=None), 200
+
+
+@app.route("/api/nearby-pharmacies")
+def nearby_pharmacies():
+    """Find mapped offline pharmacies within 100 km using free OpenStreetMap data."""
+    try:
+        lat, lon = float(request.args["lat"]), float(request.args["lon"])
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError
+    except (KeyError, ValueError):
+        return jsonify(error="Share a valid location to find nearby medical stores."), 400
+
+    query = (
+        f'[out:json][timeout:12];('
+        f'nwr["amenity"="pharmacy"](around:100000,{lat},{lon});'
+        f'nwr["healthcare"="pharmacy"](around:100000,{lat},{lon});'
+        f'nwr["shop"="chemist"](around:100000,{lat},{lon});'
+        f');out center tags;'
+    )
+    endpoints = (
+        "https://overpass.private.coffee/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+    )
+    last_error = None
+    for endpoint in endpoints:
+        try:
+            upstream = URLRequest(
+                endpoint,
+                data=urlencode({"data": query}).encode("utf-8"),
+                headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "MediFind/1.0 (nearby pharmacy lookup)"},
+            )
+            with urlopen(upstream, timeout=15) as response:
+                result = json.loads(response.read(5_000_000).decode("utf-8"))
+            pharmacies = []
+            seen = set()
+            for place in result.get("elements", []):
+                tags = place.get("tags", {})
+                center = place.get("center") or {}
+                shop_lat = place.get("lat", center.get("lat"))
+                shop_lon = place.get("lon", center.get("lon"))
+                if shop_lat is None or shop_lon is None:
+                    continue
+                name = tags.get("name") or "Medical store"
+                unique_key = (round(shop_lat, 5), round(shop_lon, 5), name.casefold())
+                if unique_key in seen:
+                    continue
+                seen.add(unique_key)
+                distance = distance_km(lat, lon, shop_lat, shop_lon)
+                if distance > 100:
+                    continue
+                address = tags.get("addr:full") or ", ".join(filter(None, [
+                    " ".join(filter(None, [tags.get("addr:housenumber"), tags.get("addr:street")])),
+                    tags.get("addr:suburb"), tags.get("addr:city") or tags.get("addr:town"),
+                ])) or "Address not listed"
+                pharmacies.append({
+                    "name": name,
+                    "address": address,
+                    "phone": tags.get("phone") or tags.get("contact:phone") or tags.get("contact:mobile"),
+                    "lat": shop_lat,
+                    "lon": shop_lon,
+                    "distance": round(distance, 1),
+                })
+            pharmacies.sort(key=lambda pharmacy: pharmacy["distance"])
+            return jsonify(pharmacies=pharmacies[:150], source="OpenStreetMap")
+        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+            last_error = exc
+            app.logger.warning("Nearby pharmacy lookup failed on %s: %s", endpoint, type(exc).__name__)
+
+    app.logger.error("All public Overpass endpoints failed: %s", type(last_error).__name__ if last_error else "unknown error")
+    return jsonify(error="Nearby pharmacy data is temporarily unavailable. Please try again later."), 502
 
 
 @app.route("/api/chat", methods=["POST"])
