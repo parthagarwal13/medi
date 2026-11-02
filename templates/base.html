@@ -9,7 +9,7 @@
 <header class="site-header"><div class="nav">
   <a class="brand" href="/" aria-label="MediFind home"><span class="brand-mark">+</span>Medi<span class="brand-accent">Find</span></a>
   <nav class="nav-links"><a href="/">Find medicine</a></nav>
-  <div class="nav-actions"><button type="button" class="location-button" onclick="useLocation(this)"><span class="location-dot"></span>Use my location</button><span id="location-status" class="location-status" aria-live="polite"></span>
+  <div class="nav-actions"><button type="button" class="location-button" onclick="useLocation(this)"><span class="location-dot"></span><span id="location-label">Use my location</span></button><span id="location-status" class="location-status" aria-live="polite"></span>
   {% if current_user %}<span class="nav-user">{{current_user.name}}</span><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button class="text-button">Log out</button></form>{% else %}<a class="nav-login" href="/login">Log in</a><a class="button nav-join" href="/register">Join free</a>{% endif %}</div>
 </div></header>
 <main class="page-shell">
@@ -33,18 +33,40 @@ function applySavedLocation() {
   try {
     const coords = JSON.parse(saved);
     if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) throw new Error('Invalid saved location');
+    const label = document.getElementById('location-label');
+    if (label) label.textContent = `Near ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`;
+    const status = document.getElementById('location-status');
+    if (status) { status.hidden = false; status.textContent = 'Current location'; }
     document.querySelectorAll('form.search').forEach(form => {
       const lat = form.querySelector('[name="lat"]'), lon = form.querySelector('[name="lon"]');
       if (lat && lon) { lat.value = coords.lat; lon.value = coords.lon; }
     });
-    hideLocationControl();
+    loadNearbyPharmacies(coords);
   } catch (_) { localStorage.removeItem('medifind-location'); }
 }
-function hideLocationControl() {
-  const button = document.querySelector('.location-button');
-  const status = document.getElementById('location-status');
-  if (button) button.hidden = true;
-  if (status) status.hidden = true;
+function loadNearbyPharmacies(coords) {
+  const panel = document.getElementById('nearby-pharmacies');
+  if (!panel) return;
+  panel.hidden = false;
+  const list = panel.querySelector('.nearby-list');
+  list.textContent = 'Loading mapped pharmacies within 100 km…';
+  fetch(`/api/nearby-pharmacies?lat=${encodeURIComponent(coords.lat)}&lon=${encodeURIComponent(coords.lon)}`)
+    .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error); return data; })
+    .then(data => {
+      list.replaceChildren();
+      if (!data.pharmacies.length) { list.textContent = 'No mapped pharmacies found within 100 km.'; return; }
+      data.pharmacies.forEach(shop => {
+        const card = document.createElement('article'); card.className = 'nearby-card';
+        const info = document.createElement('div');
+        const name = document.createElement('strong'); name.textContent = shop.name; info.append(name);
+        const detail = document.createElement('p'); detail.textContent = `${shop.address || 'Address not listed'} · ${shop.distance} km away`; info.append(detail);
+        const actions = document.createElement('div'); actions.className = 'actions';
+        const directions = document.createElement('a'); directions.target = '_blank'; directions.rel = 'noopener'; directions.href = `https://www.google.com/maps/dir/?api=1&destination=${shop.lat},${shop.lon}`; directions.textContent = 'Directions'; actions.append(directions);
+        if (shop.phone) { const call = document.createElement('a'); call.href = `tel:${shop.phone}`; call.textContent = `Call ${shop.phone}`; actions.append(call); }
+        card.append(info, actions); list.append(card);
+      });
+      const source = panel.querySelector('.nearby-source'); source.textContent = `Map data: ${data.source}. Phone and address appear only when listed.`;
+    }).catch(error => { list.textContent = error.message || 'Could not load nearby pharmacies. Try again later.'; });
 }
 function useLocation(button) {
   const status = document.getElementById('location-status');
@@ -52,10 +74,10 @@ function useLocation(button) {
   button.disabled = true;
   if(status) status.textContent = 'Finding you…';
   navigator.geolocation.getCurrentPosition(position => {
-    const coords = {lat: position.coords.latitude, lon: position.coords.longitude};
+    const coords = {lat: position.coords.latitude, lon: position.coords.longitude, updatedAt: Date.now()};
     localStorage.setItem('medifind-location', JSON.stringify(coords));
     applySavedLocation(); button.disabled = false;
-  }, () => { button.disabled = false; if(status) status.textContent = 'Could not get location'; }, {timeout: 10000, maximumAge: 300000});
+  }, () => { button.disabled = false; if(status) { status.hidden = false; status.textContent = 'Could not get location'; } }, {timeout: 15000, maximumAge: 0, enableHighAccuracy: true});
 }
 document.addEventListener('DOMContentLoaded', applySavedLocation);
 const chatHistory = [];

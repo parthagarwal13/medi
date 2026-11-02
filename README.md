@@ -37,6 +37,7 @@ The floating MediFind Assistant uses Groq's chat completion API. Create an API k
 ## Routes
 
 - `/` and `/search`: customer pages; optional browser location is requested from the top navigation.
+- Nearby offline pharmacies are looked up within 100 km from OpenStreetMap through its public Overpass service. Coverage, phone numbers, and addresses depend on community map data; this is not a Google Places feed.
 - `/register`, `/login`, `/logout`: customer and shopkeeper account flows. Shopkeeper registration creates a pharmacy pending review.
 - `/shop`: authenticated shopkeeper inventory/photo management, scoped to their own pharmacy.
 - `/admin`: authenticated account and pharmacy moderation.
