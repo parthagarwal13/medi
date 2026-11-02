@@ -383,6 +383,31 @@ def stylesheet():
     return send_from_directory(os.path.join(app.root_path, "public"), "style.css")
 
 
+@app.route("/api/location-name")
+def location_name():
+    """Turn the user's browser GPS coordinates into a nearby city/locality label."""
+    try:
+        lat, lon = float(request.args["lat"]), float(request.args["lon"])
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError
+    except (KeyError, ValueError):
+        return jsonify(error="Valid location coordinates are required."), 400
+    query = urlencode({"format": "jsonv2", "lat": lat, "lon": lon, "zoom": 10, "addressdetails": 1})
+    geocode_request = URLRequest(
+        f"https://nominatim.openstreetmap.org/reverse?{query}",
+        headers={"User-Agent": "MediFind/1.0 (reverse location label)", "Accept-Language": "en"},
+    )
+    try:
+        with urlopen(geocode_request, timeout=5) as response:
+            result = json.loads(response.read(200_000).decode("utf-8"))
+        address = result.get("address") or {}
+        name = next((address.get(key) for key in ("city", "town", "municipality", "village", "city_district", "state_district", "county") if address.get(key)), None)
+        return jsonify(name=name)
+    except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+        app.logger.info("Reverse geocoding unavailable for location label")
+        return jsonify(name=None), 200
+
+
 @app.route("/api/chat", methods=["POST"])
 def ai_chat():
     """Proxy customer chat to Groq without exposing the API key in the browser."""
@@ -531,43 +556,6 @@ def search():
             offers.append({"platform": "PharmEasy", "product_url": fallback})
         results[-1]["online_offers"] = offers
     return render_template("search.html", q=q, results=results, lat=lat, lon=lon)
-
-
-@app.route("/api/nearby-pharmacies")
-def nearby_pharmacies():
-    """Find mapped offline pharmacies within 100 km using OpenStreetMap/Overpass."""
-    try:
-        lat, lon = float(request.args["lat"]), float(request.args["lon"])
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            raise ValueError
-    except (KeyError, ValueError):
-        return jsonify(error="Valid location coordinates are required."), 400
-    query = f'[out:json][timeout:20];(node["amenity"="pharmacy"](around:100000,{lat},{lon});way["amenity"="pharmacy"](around:100000,{lat},{lon});relation["amenity"="pharmacy"](around:100000,{lat},{lon}););out center tags;'
-    try:
-        upstream = URLRequest("https://overpass-api.de/api/interpreter", data=urlencode({"data": query}).encode(), headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "MediFind/1.0 (nearby pharmacy lookup)"})
-        with urlopen(upstream, timeout=25) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        shops = []
-        seen = set()
-        for item in data.get("elements", []):
-            tags = item.get("tags", {})
-            shop_lat = item.get("lat", (item.get("center") or {}).get("lat"))
-            shop_lon = item.get("lon", (item.get("center") or {}).get("lon"))
-            if shop_lat is None or shop_lon is None:
-                continue
-            key = (round(shop_lat, 5), round(shop_lon, 5), tags.get("name", ""))
-            if key in seen:
-                continue
-            seen.add(key)
-            distance = distance_km(lat, lon, shop_lat, shop_lon)
-            if distance > 100:
-                continue
-            shops.append({"name": tags.get("name") or "Pharmacy (name not listed)", "address": ", ".join(filter(None, [tags.get("addr:street"), tags.get("addr:city")])), "phone": tags.get("phone") or tags.get("contact:phone"), "lat": shop_lat, "lon": shop_lon, "distance": round(distance, 1)})
-        shops.sort(key=lambda shop: shop["distance"])
-        return jsonify(pharmacies=shops[:300], source="OpenStreetMap")
-    except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
-        app.logger.exception("Nearby pharmacy lookup failed")
-        return jsonify(error="Nearby pharmacy data is temporarily unavailable. Please try again."), 502
 
 
 @app.route("/register", methods=["GET", "POST"])
