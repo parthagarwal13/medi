@@ -9,7 +9,7 @@
 <header class="site-header"><div class="nav">
   <a class="brand" href="/" aria-label="MediFind home"><span class="brand-mark">+</span>Medi<span class="brand-accent">Find</span></a>
   <nav class="nav-links"><a href="/">Find medicine</a></nav>
-  <div class="nav-actions"><button type="button" class="location-button" onclick="useLocation(this)"><span class="location-dot"></span><span class="location-label" id="location-label">Current location</span></button><span id="location-status" class="location-status" aria-live="polite" hidden></span>
+  <div class="nav-actions"><button type="button" class="location-button" onclick="useLocation(this)"><span class="location-dot"></span><span class="location-label" id="location-label">Share your location</span></button><span id="location-status" class="location-status" aria-live="polite" hidden></span>
   {% if current_user %}<span class="nav-user">{{current_user.name}}</span><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button class="text-button">Log out</button></form>{% else %}<a class="nav-login" href="/login">Log in</a><a class="button nav-join" href="/register">Join free</a>{% endif %}</div>
 </div></header>
 <main class="page-shell">
@@ -27,48 +27,82 @@
 </section>
 <footer class="site-footer"><span class="brand"><span class="brand-mark">+</span>Medi<span class="brand-accent">Find</span></span><span>Local medicine availability, made easier.</span><a href="/#about">About</a><a href="/login/shopkeeper">Shopkeeper login</a><a href="/login/admin">Admin login</a></footer>
 <script>
-function applySavedLocation() {
-  const saved = localStorage.getItem('medifind-location');
-  if (!saved) return;
-  try {
-    const coords = JSON.parse(saved);
-    if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) throw new Error('Invalid saved location');
-    updateLocationName(coords);
-    document.querySelectorAll('form.search').forEach(form => {
-      const lat = form.querySelector('[name="lat"]'), lon = form.querySelector('[name="lon"]');
-      if (lat && lon) { lat.value = coords.lat; lon.value = coords.lon; }
-    });
-  } catch (_) { localStorage.removeItem('medifind-location'); }
+let locationLookupId = 0;
+function setCurrentLocation(coords) {
+  localStorage.setItem('medifind-location', JSON.stringify({...coords, updatedAt: Date.now()}));
+  document.querySelectorAll('form.search').forEach(form => {
+    const lat = form.querySelector('[name="lat"]'), lon = form.querySelector('[name="lon"]');
+    if (lat && lon) { lat.value = coords.lat; lon.value = coords.lon; }
+  });
+  updateLocationName(coords);
+}
+function clearCurrentLocation() {
+  locationLookupId++;
+  localStorage.removeItem('medifind-location');
+  const label = document.getElementById('location-label');
+  const status = document.getElementById('location-status');
+  if (label) label.textContent = 'Share your location';
+  if (status) status.hidden = true;
+  document.querySelectorAll('form.search').forEach(form => {
+    const lat = form.querySelector('[name="lat"]'), lon = form.querySelector('[name="lon"]');
+    if (lat && lon) { lat.value = ''; lon.value = ''; }
+  });
+  const currentUrl = new URL(window.location.href);
+  if (currentUrl.pathname === '/search' && (currentUrl.searchParams.has('lat') || currentUrl.searchParams.has('lon'))) {
+    currentUrl.searchParams.delete('lat');
+    currentUrl.searchParams.delete('lon');
+    window.location.replace(currentUrl.pathname + currentUrl.search + currentUrl.hash);
+  }
 }
 async function updateLocationName(coords) {
+  const lookupId = ++locationLookupId;
   const label = document.getElementById('location-label');
   const status = document.getElementById('location-status');
   if (label) label.textContent = 'Current location';
   if (status) status.hidden = true;
   const cacheKey = `medifind-location-name:${coords.lat.toFixed(3)}:${coords.lon.toFixed(3)}`;
   const cachedName = localStorage.getItem(cacheKey);
-  if (cachedName) { if (label) label.textContent = cachedName; return; }
+  if (cachedName) { if (lookupId === locationLookupId && label) label.textContent = cachedName; return; }
   try {
     const response = await fetch(`/api/location-name?lat=${encodeURIComponent(coords.lat)}&lon=${encodeURIComponent(coords.lon)}`);
     if (!response.ok) return;
     const data = await response.json();
+    if (lookupId !== locationLookupId) return;
     if (label && data.name) { label.textContent = data.name; localStorage.setItem(cacheKey, data.name); }
   } catch (_) {
-    if (status) { status.hidden = false; status.textContent = 'City name unavailable'; }
+    if (lookupId === locationLookupId && status) { status.hidden = false; status.textContent = 'City name unavailable'; }
   }
 }
-function useLocation(button) {
+function refreshCurrentLocation(button) {
+  if (!navigator.geolocation) { clearCurrentLocation(); return; }
+  if (button) button.disabled = true;
   const status = document.getElementById('location-status');
-  if (!navigator.geolocation) { if(status) status.textContent = 'Location is unavailable'; return; }
-  button.disabled = true;
-  if(status) { status.hidden = false; status.textContent = 'Finding you…'; }
+  if (button && status) { status.hidden = false; status.textContent = 'Finding you…'; }
   navigator.geolocation.getCurrentPosition(position => {
-    const coords = {lat: position.coords.latitude, lon: position.coords.longitude, updatedAt: Date.now()};
-    localStorage.setItem('medifind-location', JSON.stringify(coords));
-    applySavedLocation(); button.disabled = false;
-  }, () => { button.disabled = false; if(status) { status.hidden = false; status.textContent = 'Could not get location'; } }, {timeout: 15000, maximumAge: 0, enableHighAccuracy: true});
+    setCurrentLocation({lat: position.coords.latitude, lon: position.coords.longitude});
+    if (button) button.disabled = false;
+  }, () => {
+    clearCurrentLocation();
+    if (button) button.disabled = false;
+    if (button && status) { status.hidden = false; status.textContent = 'Location not available'; }
+  }, {timeout: 15000, maximumAge: 0, enableHighAccuracy: true});
 }
-document.addEventListener('DOMContentLoaded', applySavedLocation);
+function useLocation(button) {
+  refreshCurrentLocation(button);
+}
+async function initializeLocationPermission() {
+  if (!navigator.permissions || !navigator.permissions.query) { clearCurrentLocation(); return; }
+  try {
+    const permission = await navigator.permissions.query({name: 'geolocation'});
+    const syncPermission = () => {
+      if (permission.state === 'granted') refreshCurrentLocation(null);
+      else clearCurrentLocation();
+    };
+    permission.onchange = syncPermission;
+    syncPermission();
+  } catch (_) { clearCurrentLocation(); }
+}
+document.addEventListener('DOMContentLoaded', initializeLocationPermission);
 const chatHistory = [];
 const chatPanel = document.getElementById('chat-panel');
 const chatLauncher = document.getElementById('chat-launcher');
