@@ -100,7 +100,14 @@ async function loadNearbyPharmacies(coords) {
       });
     });
   } catch (error) {
-    panels.forEach(panel => { panel.querySelector('.nearby-message').textContent = error.message || 'Nearby medical stores could not be loaded.'; });
+    panels.forEach(panel => {
+      const message = panel.querySelector('.nearby-message');
+      message.textContent = 'Free pharmacy map lookup is temporarily unavailable. ';
+      const fallback = document.createElement('a'); fallback.target = '_blank'; fallback.rel = 'noopener';
+      fallback.href = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('medical stores near ' + coords.lat + ',' + coords.lon);
+      fallback.textContent = 'Open nearby medical stores in Google Maps';
+      message.append(fallback);
+    });
   }
 }async function updateLocationName(coords) {
   const lookupId = ++locationLookupId;

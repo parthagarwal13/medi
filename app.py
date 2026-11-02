@@ -420,9 +420,8 @@ def nearby_pharmacies():
         return jsonify(error="Share a valid location to find nearby medical stores."), 400
 
     query = (
-        f'[out:json][timeout:10];('
+        f'[out:json][timeout:5];('
         f'nwr["amenity"="pharmacy"](around:20000,{lat},{lon});'
-        f'nwr["healthcare"="pharmacy"](around:20000,{lat},{lon});'
         f'nwr["shop"="chemist"](around:20000,{lat},{lon});'
         f');out center tags;'
     )
@@ -438,7 +437,8 @@ def nearby_pharmacies():
                 data=urlencode({"data": query}).encode("utf-8"),
                 headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "MediFind/1.0 (nearby pharmacy lookup)"},
             )
-            with urlopen(upstream, timeout=15) as response:
+            # Two bounded attempts keep the route safely within Vercel's 30-second limit.
+            with urlopen(upstream, timeout=8) as response:
                 result = json.loads(response.read(5_000_000).decode("utf-8"))
             pharmacies = []
             seen = set()
