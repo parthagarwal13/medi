@@ -411,7 +411,7 @@ def location_name():
 
 @app.route("/api/nearby-pharmacies")
 def nearby_pharmacies():
-    """Find mapped offline pharmacies within 100 km using free OpenStreetMap data."""
+    """Find the two nearest mapped offline pharmacies within 20 km using OpenStreetMap."""
     try:
         lat, lon = float(request.args["lat"]), float(request.args["lon"])
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
@@ -420,10 +420,10 @@ def nearby_pharmacies():
         return jsonify(error="Share a valid location to find nearby medical stores."), 400
 
     query = (
-        f'[out:json][timeout:12];('
-        f'nwr["amenity"="pharmacy"](around:100000,{lat},{lon});'
-        f'nwr["healthcare"="pharmacy"](around:100000,{lat},{lon});'
-        f'nwr["shop"="chemist"](around:100000,{lat},{lon});'
+        f'[out:json][timeout:10];('
+        f'nwr["amenity"="pharmacy"](around:20000,{lat},{lon});'
+        f'nwr["healthcare"="pharmacy"](around:20000,{lat},{lon});'
+        f'nwr["shop"="chemist"](around:20000,{lat},{lon});'
         f');out center tags;'
     )
     endpoints = (
@@ -455,7 +455,7 @@ def nearby_pharmacies():
                     continue
                 seen.add(unique_key)
                 distance = distance_km(lat, lon, shop_lat, shop_lon)
-                if distance > 100:
+                if distance > 20:
                     continue
                 address = tags.get("addr:full") or ", ".join(filter(None, [
                     " ".join(filter(None, [tags.get("addr:housenumber"), tags.get("addr:street")])),
@@ -470,7 +470,7 @@ def nearby_pharmacies():
                     "distance": round(distance, 1),
                 })
             pharmacies.sort(key=lambda pharmacy: pharmacy["distance"])
-            return jsonify(pharmacies=pharmacies[:150], source="OpenStreetMap")
+            return jsonify(pharmacies=pharmacies[:2], source="OpenStreetMap")
         except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
             last_error = exc
             app.logger.warning("Nearby pharmacy lookup failed on %s: %s", endpoint, type(exc).__name__)
